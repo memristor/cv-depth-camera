@@ -2,6 +2,9 @@ import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.pyplot as plt
+from matplotlib._png import read_png
+
+# table_image = read_png('table.png')
 
 fig = plt.figure()
 ax = Axes3D(fig)
@@ -20,6 +23,17 @@ def table():
   table_poly.set_linestyle('solid')
   ax.add_collection3d(table_poly)
   ax.auto_scale_xyz([-w, w], [-w, w], [-w + h, w + h])
+  # ax.add_collection3d(table_poly)
+  # x, y = np.ogrid[
+  #   -table_image.shape[0]/2:table_image.shape[0]/2,
+  #   -table_image.shape[1]/2:table_image.shape[1]/2]
+  # ax.plot_surface(x, y, np.array([[-1]]), facecolors=table_image, rstride=2, cstride=2, alpha=0.5)
+  # ax.auto_scale_xyz(
+  #   [-table_image.shape[0], table_image.shape[0]],
+  #   [-table_image.shape[0], -table_image.shape[0]],
+  #   [-table_image.shape[0], table_image.shape[0]]
+  # )
+  # ax.plot_surface(x, y, np.array([[-1]]), facecolors=table_image,  rstride=8, cstride=8)
 
 def point(point, color='black', label=None):
   global ax

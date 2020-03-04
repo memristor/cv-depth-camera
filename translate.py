@@ -15,13 +15,26 @@ plot.vectors(table_base, color='blue')
 plot.point(camera_origin, color='orange')
 plot.vectors(camera_base, camera_origin, color='orange')
 
-camera_point = np.array([1,1,1])
+def convert_point(point, rotation_matrix, relative_translation=np.array([0,0,0])):
+  return np.linalg.inv(rotation_matrix).dot(point) + relative_translation
 
-camera_point_ = np.linalg.inv(camera_base).dot(camera_point) + camera_origin
+def rotation_matrix(original_points, converted_points, relative_translation=np.array([0,0,0])):
+  return np.linalg.inv(original_points).dot(converted_points - relative_translation)
 
-print(np.linalg.norm(camera_point_ - camera_origin))
 
-plot.point(camera_point, color='blue', label='originalna')
-plot.point(camera_point_, color='green', label=str(camera_point_))
+o1 = np.array([1,1,1])
+c1 = np.linalg.inv(camera_base).dot(o1) + camera_origin
+
+o2 = np.array([2,5,7])
+c2 = np.linalg.inv(camera_base).dot(o2) + camera_origin
+
+o3 = np.array([-3,4,0])
+c3 = np.linalg.inv(camera_base).dot(o3) + camera_origin
+
+print(rotation_matrix(np.array([o1,o2,o3]), np.array([c1,c2,c3]), camera_origin).round(decimals=3))
+
+
+plot.point(o1, color='purple', label='table')
+plot.point(c1, color='red', label='camera')
 
 plot.show()
