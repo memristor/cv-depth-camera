@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 fig = plt.figure()
 ax = Axes3D(fig)
+ax.set_proj_type('ortho')
 
 def table():
   global ax
@@ -20,15 +21,19 @@ def table():
   ax.add_collection3d(table_poly)
   ax.auto_scale_xyz([-w, w], [-w, w], [-w + h, w + h])
 
-def point(point, color='black'):
+def point(point, color='black', label=None):
   global ax
+  if label is not None:
+    text(label, point, color=color)
   ax.scatter3D(
     point[0], point[1], point[2],
     color=color
   )
 
-def vector(vector, point=np.array([0,0,0]), color='black'):
+def vector(vector, point=np.array([0,0,0]), color='black', label=None):
   global ax
+  if label is not None:
+    text(label, point, color=color)
   ax.quiver(
     point[0], point[1], point[2],
     vector[0], vector[1], vector[2],
@@ -49,6 +54,9 @@ def vectors(vectors, point=np.array([0,0,0]), color='black'):
     vectors[:, 0], vectors[:, 1], vectors[:, 2],
     color=color
   )
+
+def text(text, point, color='black'):
+  ax.text(point[0] + 0.1, point[1] + 0.1, point[2] + 0.1, text, color=color)
 
 def show():
   global plt
