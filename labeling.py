@@ -120,8 +120,10 @@ def render_tags():
           1, (255, 255, 255), thickness=3
         )
 
-cv2.namedWindow('image', cv2.WINDOW_GUI_EXPANDED)
+cv2.namedWindow('image', cv2.WINDOW_GUI_NORMAL)
 cv2.setMouseCallback('image', clicker)
+
+
 
 while True:
 
