@@ -117,5 +117,5 @@ def cylinder(point, radius=0.36, height=1.15, resolution=15, color='black'):
 
 def show():
   global plt
-  plt.axis('off')
+  # plt.axis('off')
   plt.show()

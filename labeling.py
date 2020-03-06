@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import math
 
-im = cv2.imread('../blender/terrain-hd.png')
+im = cv2.imread('depth_images/slika1_Color.png')
 cmask = np.zeros([im.shape[0], im.shape[1], 3], dtype=np.uint8)
 
 tags = {
