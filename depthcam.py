@@ -8,7 +8,8 @@ import numpy as np
 import cv2
 
 import math
-import plot
+# import plot
+import matplotlib.pyplot as plt
 
 pipeline = rs.pipeline
 
@@ -23,6 +24,8 @@ pixel_angles = np.array
 pxa_x = np.array
 pxa_y = np.array
 
+width, height = 1280, 720
+
 def init():
     
     global pipeline, align, depth_scale
@@ -33,8 +36,8 @@ def init():
     #Create a config and configure the pipeline to stream
     #  different resolutions of color and depth streams
     config = rs.config()
-    config.enable_stream(rs.stream.depth, 1280, 720, rs.format.z16, 30)
-    config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+    config.enable_stream(rs.stream.depth, width, height, rs.format.z16, 30)
+    config.enable_stream(rs.stream.color, width, height, rs.format.bgr8, 30)
 
     # Start streaming
     profile = pipeline.start(config)
@@ -100,16 +103,13 @@ def get_frame_rgbd():
     # Render images
     # depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
     
-    distance_clip_cm = 255
+    distance_clip_cm = 100
     depth_image_cm = depth_image.copy()
     depth_image_cm = depth_image_cm * depth_scale * 100
     depth_image_cm[depth_image_cm > distance_clip_cm] = 255
     depth_image_cm = np.array(depth_image_cm, dtype=np.uint8)
     # if mfilt:
     #     depth_image_cm = cv2.medianBlur(depth_image_cm, 7)
-
-    height = depth_image_cm.shape[0]
-    width = depth_image_cm.shape[1]
 
     # angleX = (np.arange(-width / 2, width / 2) / width * fov[0])
     # angleY = (np.arange(-height / 2, height / 2) / height * fov[1])
@@ -140,12 +140,11 @@ def get_frame_rgbd():
 
     z = depth_image_cm
     d = z.copy() * np.cos(pixel_angles * math.pi / 180)
-    x = np.array(d.copy() * np.tan(pxa_x * math.pi / 180), dtype=np.uint8)
-    y = np.array(d.copy() * np.tan(pxa_y * math.pi / 180), dtype=np.uint8)
+    x = np.array(d.copy() * np.tan(pxa_x * math.pi / 180), dtype=np.float)
+    y = np.array(d.copy() * np.tan(pxa_y * math.pi / 180), dtype=np.float)
 
-    return x
-    # return rgbd[:,:,3]
-    return x, y, z, color_image
+    return color_image, depth_image_cm
+    # return x, y, z, color_image
 
 
 # x, y, z = get_frame_rgbd()
@@ -157,6 +156,13 @@ def get_frame_rgbd():
 
 # plot.points(points)
 # plot.show()
+
+# dataset_index = 
+
+import os
+filecount =  len([f for f in os.listdir('./dataset/')if os.path.isfile(os.path.join('./dataset/', f))])
+
+dataset_file_index = filecount // 2
 
 # Streaming loop
 try:
@@ -173,15 +179,27 @@ try:
         # cv2.imshow('X', x)
         # cv2.namedWindow('Y', cv2.WINDOW_GUI_EXPANDED)
         # cv2.imshow('Y', y)
-        cv2.namedWindow('frame', cv2.WINDOW_AUTOSIZE)
-        cv2.imshow('frame', get_frame_rgbd())
+        rgb, d = get_frame_rgbd()
+
+        # plt.imshow(frame)
+        # plt.show()
+        # break
+
+        cv2.namedWindow('frame', cv2.WINDOW_GUI_EXPANDED)
+        cv2.imshow('frame', rgb)
+        cv2.namedWindow('d', cv2.WINDOW_GUI_EXPANDED)
+        cv2.imshow('d', d)
         key = cv2.waitKey(1)
         # Press esc or 'q' to close the image window
         if key & 0xFF == ord('q') or key == 27:
             cv2.destroyAllWindows()
             break
-        if key == ord('f'):
-            mfilt = not mfilt
+        if key == ord('x'):
+            cv2.imwrite('./dataset/rgb_%i.png' % dataset_file_index, rgb)
+            cv2.imwrite('./dataset/depth_%i.png' % dataset_file_index, d)
+            dataset_file_index += 1
+
+        
 finally:
     
     stop()
