@@ -24,11 +24,31 @@ def resize(image, dimensions=(720, 480)):
 def iterate():
     filter = True
     autoiter = False
-    for rgb, depth in next_image(7, 1000):
-        f_rgb, bb_red, bb_green = filter_rgb(rgb)
-        f_depth = filter_depth(depth)
+    bb_red = None
+    bb_green = None
+    slope = 1
+    for rgb, depth in next_image(0, 1000):
+
+        f_rgb, bb_red_, bb_green_ = filter_rgb(rgb)
+        if bb_red_ is not None:
+            bb_red = bb_red_
+            dp_red = np.array(bb_red, dtype=np.int32).reshape((-1,1,2))
+        if bb_green_ is not None:
+            bb_green = bb_green_
+            dp_green = np.array(bb_green, dtype=np.int32).reshape((-1,1,2))
+        
+        f_depth = np.zeros((1,1))
+        if bb_red is not None and bb_green is not None:
+            f_depth = filter_depth(depth, bb_red, bb_green)
+
+        # if bb_red is not None and bb_green is not None:
+        #     bottom = euclidian_distance(bb_red[2], bb_green[3])
+        #     top = euclidian_distance(bb_red[1], bb_green[0])
+        #     slope = top / bottom
+
         cv2.namedWindow('iterate', cv2.WINDOW_GUI_EXPANDED)
-        if bb_red == None and bb_green == None:
+        
+        if bb_red is None and bb_green is None:
             cv2.imshow('iterate', rgb)
             print('skip')
             key = cv2.waitKey(1) & 0xFF
@@ -37,24 +57,42 @@ def iterate():
             elif key == ord('a'):
                     autoiter = not autoiter
             continue
-        else:
-            while True:
-                cv2.imshow('iterate', f_rgb if filter else rgb)
-                key = cv2.waitKey(1) & 0xFF
-                if key  == ord('q'):
-                    return
-                elif key == ord('f'):
-                    filter = not filter
-                elif key == ord('a'):
-                    autoiter = not autoiter
-                elif key == ord(' '):
-                    break
-                if autoiter:
-                    sleep(0.3)
-                    break
+
+        while True:
+            # cv2.imshow('iterate', f_rgb if filter else rgb)
+
+            if dp_red is not None:
+                cv2.polylines(depth,[dp_red],True,(255 if bb_red is not None else 100), thickness=2)
+            if dp_green is not None:
+                cv2.polylines(depth,[dp_green],True,(255 if bb_green is not None else 100), thickness=2)
+
+            cv2.imshow('iterate',
+                # cv2.add(f_depth, cv2.cvtColor(depth,cv2.COLOR_GRAY2RGB))
+                # cv2.add(f_depth, f_rgb)
+                f_depth
+                if filter else cv2.add(f_rgb, rgb))
+            key = cv2.waitKey(1) & 0xFF
+            if key  == ord('q'):
+                return
+            elif key == ord('f'):
+                filter = not filter
+            elif key == ord('a'):
+                autoiter = not autoiter
+            elif key == ord(' '):
+                break
+            if autoiter:
+                sleep(0.3)
+                break
+
+def euclidian_distance(a, b):
+        square_sum = 0
+        for a_val, b_val in zip(a, b):
+            square_sum += (a_val - b_val) ** 2
+        return math.sqrt(square_sum)
 
 def filter_rgb(source):
 
+    drawboard = np.zeros(source.shape, dtype=np.uint8)
     im = source.copy()
     im = cv2.bilateralFilter(im,3,30,30)
     im_hsv = cv2.cvtColor(im, cv2.COLOR_RGB2HSV)
@@ -100,12 +138,6 @@ def filter_rgb(source):
         )
         return contours
 
-    def euclidian_distance(a, b):
-        square_sum = 0
-        for a_val, b_val in zip(a, b):
-            square_sum += (a_val - b_val) ** 2
-        return math.sqrt(square_sum)
-
     def color_in_range(color_sample, color_hsv, color_tolerance):
         tolerance_low, tolerance_high = tolerances(color_hsv, color_tolerance)
         if color_sample[0] < tolerance_low[0] and \
@@ -147,20 +179,20 @@ def filter_rgb(source):
 
     def draw_filter(index, shape, box, color):
 
-        cv2.drawContours(im, [shape[3]], 0, (color[2], color[1], color[0]), -1)
+        cv2.drawContours(drawboard, [shape[3]], 0, (color[2], color[1], color[0]), -1)
         
         if box is None or index > 0:
-            cv2.drawContours(im, [shape[3]], 0, (255, 255, 255), 5)
-            cv2.drawContours(im, [shape[3]], 0, (color[2], color[1], color[0]), 2)
+            cv2.drawContours(drawboard, [shape[3]], 0, (255, 255, 255), 5)
+            cv2.drawContours(drawboard, [shape[3]], 0, (color[2], color[1], color[0]), 2)
             return
 
         cv2.putText(
-            im, '#%i %ix%ipx %ideg' % (index, shape[1], shape[0], shape[2]),
+            drawboard, '#%i %ix%ipx %ideg' % (index, shape[1], shape[0], shape[2]),
             box[1], cv2.QT_FONT_NORMAL, 0.7,
             (color[2], color[1], color[0]), thickness=2
         )
         contourpoints = np.array(box, dtype=np.int32).reshape((-1,1,2))
-        cv2.polylines(im,[contourpoints],True,(0,255,255), thickness=3)
+        cv2.polylines(drawboard,[contourpoints],True,(0,255,255), thickness=3)
 
     def bounding_box(
         color,
@@ -203,6 +235,13 @@ def filter_rgb(source):
                 cv2.drawContours(mask_box, [approx], 0, (255), -1)
                 color_mean_hsv = cv2.mean(im_hsv, mask=mask_box)[:3]
                 
+                draw_filter(-1, (
+                    height,
+                    width,
+                    angle,
+                    approx,
+                ), None, color)
+
                 if (height < height_range[0] or height > height_range[1]) or \
                     (width < width_range[0] or width > width_range[1]) or \
                     (height / width < hw_ratio_range[0] or \
@@ -215,7 +254,6 @@ def filter_rgb(source):
                     width,
                     angle,
                     approx,
-                    box
                 ))
 
         if len(vote_list) > 0:
@@ -232,7 +270,7 @@ def filter_rgb(source):
     color_red = (145, 35, 30)
     color_green = (50, 111, 67)
 
-    tolerance_red_hsv = (5, 40, 50)
+    tolerance_red_hsv = (10, 40, 50)
     tolerance_green_hsv = (25, 60, 50)
 
     bb_red = bounding_box(
@@ -247,15 +285,46 @@ def filter_rgb(source):
     bb_green = bounding_box(
         color=color_green,
         color_tolerance=tolerance_green_hsv,
-        height_range=(480, 500),
-        width_range=(30, 40),
+        height_range=(470, 500),
+        width_range=(30, 45),
         hw_ratio_range=(11, 15),
         orientation_range=(55, 90)
     )
 
-    return im, bb_red, bb_green
+    return drawboard, bb_red, bb_green
 
-def filter_depth(source):
-    return source
+def filter_depth(source, bb_red, bb_green):
+
+    drawboard = np.zeros((*source.shape, 3), dtype=np.uint8)
+    im = np.array(source.copy(), dtype=np.uint8)
+    im = cv2.medianBlur(im, 11).transpose()
+
+    dist_top = (im[bb_red[1]] + im[bb_green[0]]) / 2
+    dist_bottom = (im[bb_red[3]] + im[bb_green[2]])
+    dist_left = (im[bb_green[1]] + im[bb_green[2]]) / 2
+    dist_right = (im[bb_red[1]] + im[bb_red[2]]) / 2
+
+    distY_diff = (euclidian_distance(bb_red[1], bb_red[2]) + 
+                 euclidian_distance(bb_green[1], bb_green[2])) / 2
+    distX_diff = (euclidian_distance(bb_green[1], bb_red[1]) + 
+                 euclidian_distance(bb_green[2], bb_red[2])) / 2
+
+    slopeY = abs(dist_top - dist_bottom) * distY_diff / im.shape[1]
+    slopeX = abs(dist_left - dist_right) * distX_diff / im.shape[0]
+
+    sY = np.arange(0, slopeY, slopeY / im.shape[1], dtype=np.float)
+    sX = np.arange(0, slopeX, slopeX / im.shape[0], dtype=np.float)
+
+    onesY = np.ones(source.transpose().shape, dtype=np.float)
+    onesX = np.ones(source.shape, dtype=np.float)
+
+    slopeY_fix = np.array(onesY * sY, dtype=np.uint8)
+    slopeX_fix = np.array(onesX * sX, dtype=np.uint8).transpose()
+    
+    im = im + slopeY_fix #+ slopeX_fix
+
+    # return cv2.add(cv2.cvtColor(im, cv2.COLOR_GRAY2RGB), drawboard)
+    # return im.transpose()
+    return im.transpose()
 
 iterate()
