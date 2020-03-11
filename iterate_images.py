@@ -4,6 +4,7 @@ import os
 import cv2
 import math
 import numpy as np
+from pprint import pprint
 
 def next_image(start=0, stop=math.inf):
     n = len(os.listdir('./dataset')) // 2
@@ -20,7 +21,7 @@ def resize(image, dimensions=(720, 480)):
 
 def iterate():
     filter = True
-    for rgb, depth in next_image(7, 37):
+    for rgb, depth in next_image(7, 1000):
         f_rgb = filter_rgb(rgb)
         f_depth = filter_depth(depth)
         cv2.namedWindow('iterate', cv2.WINDOW_GUI_EXPANDED)
@@ -91,12 +92,44 @@ def filter_rgb(source):
             square_sum += (a_val - b_val) ** 2
         return math.sqrt(square_sum)
 
-    def bounding_line(
+    def contour_corner(contour, line_treshold=30):
+
+        edges = contour.copy()
+        edges = np.resize(edges, (edges.shape[0] + edges.shape[1], 2)).tolist()
+        
+        edges.sort(key=lambda s: s[1]) # sort by y location
+
+        bottom = []
+        top = []
+
+        for point in edges:
+            if point[1] >= edges[-1][1] - line_treshold:
+                bottom.append(tuple(point))
+            elif point[1] <= edges[0][1] + line_treshold:
+                top.append(tuple(point))
+            
+        n = sorted(top, key=lambda s: s[1])[0][1]
+        s = sorted(bottom, key=lambda s: s[1])[-1][1]
+        
+        top.sort(key=lambda s: s[0])
+        bottom.sort(key=lambda s: s[0])
+        nw, ne = (top[0][0], n), (top[-1][0], n)
+        sw, se = (bottom[0][0], s), (bottom[-1][0], s)
+
+        # for point in bottom:
+        #     cv2.circle(im, point, 3,(150, 50, 255), thickness=-1)
+        # for point in top:
+        #     cv2.circle(im, point, 3,(150, 50, 255), thickness=-1)
+
+        return nw, ne, sw, se
+
+    def bounding_box(
         color,
         color_tolerance=(90, 255, 255),
         height_range=(0, math.inf),
         width_range=(0, math.inf),
-        hw_ratio_range=(0, math.inf)
+        hw_ratio_range=(0, math.inf),
+        orientation_range=(0, 90)
     ):
 
         vote_list = []
@@ -104,6 +137,15 @@ def filter_rgb(source):
         for cnt in contours(mask(rgb_hsv(color), color_tolerance)):
             approx = cv2.approxPolyDP(cnt, 0.001 * cv2.arcLength(cnt, True), True)
             if len(approx) >= 4:
+
+                # Orientation
+                rows,cols = im.shape[:2]
+                [vx,vy,x,y] = cv2.fitLine(cnt, cv2.DIST_L2,0,0.01,0.01)
+                angle = abs(math.atan(vy/vx) * 180 / math.pi)
+
+                if angle < orientation_range[0] or \
+                    angle > orientation_range[1]:
+                    continue
 
                 # Shape
                 rect = cv2.minAreaRect(cnt)
@@ -114,6 +156,9 @@ def filter_rgb(source):
                 if width > height:
                     width, height = height, width
 
+                if height == 0 or width == 0:
+                    continue
+
                 if (height < height_range[0] or height > height_range[1]) or \
                     (width < width_range[0] or width > width_range[1]) or \
                     (height / width < hw_ratio_range[0] and \
@@ -123,6 +168,7 @@ def filter_rgb(source):
                 vote_list.append((
                     height,
                     width,
+                    angle,
                     approx,
                     box
                 ))
@@ -133,31 +179,53 @@ def filter_rgb(source):
                 color_mean_hsv = cv2.mean(im_hsv, mask=mask_box)
                 color_difference = euclidian_distance(color, color_mean_hsv)
 
-
         vote_list.sort(key=lambda s: s[0], reverse=True)
 
         for index in range(len(vote_list)):
             shape = vote_list[index]
             # Visualise
-            # cv2.drawContours(im, [shape[2]], 0, (color[2], color[1], color[0]), -1)
-            cv2.drawContours(im, [shape[2]], 0, (color[2], color[1], color[0]), 3)
-            cv2.drawContours(im, [shape[3]], 0, (255, 255, 255), 3)
-            cv2.putText(
-                im, '#%i (%ix%i)' % (index, shape[1], shape[0]),
-                tuple(shape[3][2]), cv2.QT_FONT_NORMAL, 1,
-                (color[2], color[1], color[0]), thickness=2
-            )
+            if index == 0:
+                # cv2.drawContours(im, [shape[3]], 0, (color[2], color[1], color[0]), 3)
+                # cv2.drawContours(im, [shape[4]], 0, (255, 255, 255), 1)
+                # cv2.drawContours(im, [shape[3]], 0, (255, 0, 255), 3)
+                cv2.putText(
+                    im, '%ix%ipx %ideg' % (shape[1], shape[0], shape[2]),
+                    tuple(shape[4][2]), cv2.QT_FONT_NORMAL, 0.7,
+                    (color[2], color[1], color[0]), thickness=2
+                )
+                nw, ne, sw, se = contour_corner(shape[3])
+                box = np.array([nw, ne, se, sw], dtype=np.int32).reshape((-1,1,2))
+                cv2.polylines(im,[box],True,(255,255,255), thickness=2)
+
+                return box
 
     color_red = (145, 35, 30)
     color_green = (50, 111, 67)
 
+    # tolerance_red_hsv = (5, 40, 50)
+    # tolerance_green_hsv = (25, 60, 50)
+
     tolerance_red_hsv = (5, 40, 50)
-    tolerance_green_hsv = (25, 60, 50)
+    tolerance_green_hsv = (25, 50, 50)
 
-    bounding_line(color_red, tolerance_red_hsv, (480, 580), (40,60), (10,14))
-    bounding_line(color_green, tolerance_green_hsv, (400, 600), (30, 40), (11, 15))
+    bb_red = bounding_box(
+        color=color_red,
+        color_tolerance=tolerance_red_hsv,
+        height_range=(480, 580),
+        width_range=(40, 60),
+        hw_ratio_range=(10, 14),
+        orientation_range=(70, 90)
+    )
+    bb_green = bounding_box(
+        color=color_green,
+        color_tolerance=tolerance_green_hsv,
+        height_range=(400, 600),
+        width_range=(30, 40),
+        hw_ratio_range=(11, 15),
+        orientation_range=(55, 90)
+    )
 
-    return im
+    return im, bb_red, bb_green
 
 def filter_depth(source):
     return source
