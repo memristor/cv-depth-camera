@@ -37,17 +37,11 @@ def iterate():
             bb_green = bb_green_
             dp_green = np.array(bb_green, dtype=np.int32).reshape((-1,1,2))
         
-        f_depth = np.zeros((1,1))
+        f_depth = np.zeros(depth.shape)
         if bb_red is not None and bb_green is not None:
             f_depth = filter_depth(depth, bb_red, bb_green)
 
-        # if bb_red is not None and bb_green is not None:
-        #     bottom = euclidian_distance(bb_red[2], bb_green[3])
-        #     top = euclidian_distance(bb_red[1], bb_green[0])
-        #     slope = top / bottom
-
-        cv2.namedWindow('iterate', cv2.WINDOW_GUI_EXPANDED)
-        
+        cv2.namedWindow('iterate', cv2.WINDOW_GUI_EXPANDED)        
         if bb_red is None and bb_green is None:
             cv2.imshow('iterate', rgb)
             print('skip')
@@ -61,15 +55,15 @@ def iterate():
         while True:
             # cv2.imshow('iterate', f_rgb if filter else rgb)
 
+            bb = np.zeros(depth.shape, dtype=np.uint8)
             if dp_red is not None:
-                cv2.polylines(depth,[dp_red],True,(255 if bb_red is not None else 100), thickness=2)
+                cv2.polylines(bb,[dp_red],True,(255 if bb_red_ is not None else 120), thickness=2)
             if dp_green is not None:
-                cv2.polylines(depth,[dp_green],True,(255 if bb_green is not None else 100), thickness=2)
+                cv2.polylines(bb,[dp_green],True,(255 if bb_green_ is not None else 120), thickness=2)
 
             cv2.imshow('iterate',
                 # cv2.add(f_depth, cv2.cvtColor(depth,cv2.COLOR_GRAY2RGB))
-                # cv2.add(f_depth, f_rgb)
-                f_depth
+                cv2.add(f_depth, bb)
                 if filter else cv2.add(f_rgb, rgb))
             key = cv2.waitKey(1) & 0xFF
             if key  == ord('q'):
@@ -184,6 +178,7 @@ def filter_rgb(source):
         if box is None or index > 0:
             cv2.drawContours(drawboard, [shape[3]], 0, (255, 255, 255), 5)
             cv2.drawContours(drawboard, [shape[3]], 0, (color[2], color[1], color[0]), 2)
+            cv2.polylines(drawboard,[shape[3][1]],True,(0,255,255), thickness=3)
             return
 
         cv2.putText(
@@ -270,7 +265,7 @@ def filter_rgb(source):
     color_red = (145, 35, 30)
     color_green = (50, 111, 67)
 
-    tolerance_red_hsv = (10, 40, 50)
+    tolerance_red_hsv = (20, 40, 50)
     tolerance_green_hsv = (25, 60, 50)
 
     bb_red = bounding_box(
@@ -285,7 +280,7 @@ def filter_rgb(source):
     bb_green = bounding_box(
         color=color_green,
         color_tolerance=tolerance_green_hsv,
-        height_range=(470, 500),
+        height_range=(460, 500),
         width_range=(30, 45),
         hw_ratio_range=(11, 15),
         orientation_range=(55, 90)
@@ -297,7 +292,7 @@ def filter_depth(source, bb_red, bb_green):
 
     drawboard = np.zeros((*source.shape, 3), dtype=np.uint8)
     im = np.array(source.copy(), dtype=np.uint8)
-    im = cv2.medianBlur(im, 11).transpose()
+    im = cv2.medianBlur(im, 15).transpose()
 
     dist_top = (im[bb_red[1]] + im[bb_green[0]]) / 2
     dist_bottom = (im[bb_red[3]] + im[bb_green[2]])
@@ -309,22 +304,36 @@ def filter_depth(source, bb_red, bb_green):
     distX_diff = (euclidian_distance(bb_green[1], bb_red[1]) + 
                  euclidian_distance(bb_green[2], bb_red[2])) / 2
 
-    slopeY = abs(dist_top - dist_bottom) * distY_diff / im.shape[1]
-    slopeX = abs(dist_left - dist_right) * distX_diff / im.shape[0]
+    # slopeY = abs(dist_top - dist_bottom) * distY_diff / im.shape[1]
+    slopeY = (dist_top / dist_bottom) * (dist_top - dist_bottom) * distY_diff / im.shape[1]
+    slopeX = (dist_left / dist_right) * (dist_left - dist_right) * distX_diff / im.shape[0]
 
-    sY = np.arange(0, slopeY, slopeY / im.shape[1], dtype=np.float)
-    sX = np.arange(0, slopeX, slopeX / im.shape[0], dtype=np.float)
+    if slopeX == 0 or slopeY == 0:
+        return im.transpose()
+
+    sY = np.arange(0, slopeY, slopeY / im.shape[1], dtype=np.float)[:im.shape[1]]
+    sX = np.arange(0, slopeX, slopeX / im.shape[0], dtype=np.float)[:im.shape[0]]
+    sY = abs(sY)
+    sX = abs(sX) * 2
 
     onesY = np.ones(source.transpose().shape, dtype=np.float)
     onesX = np.ones(source.shape, dtype=np.float)
 
     slopeY_fix = np.array(onesY * sY, dtype=np.uint8)
     slopeX_fix = np.array(onesX * sX, dtype=np.uint8).transpose()
-    
-    im = im + slopeY_fix #+ slopeX_fix
+
+    slope_fix = cv2.add(slopeX_fix, slopeY_fix)
+    slope_fix[im == 0] = 0
+
+    im = cv2.add(im, slope_fix)
+
+    im[im >= np.median(im) - 10] = 0
+    print(im.min())
 
     # return cv2.add(cv2.cvtColor(im, cv2.COLOR_GRAY2RGB), drawboard)
-    # return im.transpose()
+    # return np.array(slopeX_fix, dtype=np.uint8).transpose()
+    # return slope_fix.transpose()
     return im.transpose()
 
-iterate()
+if __name__ == '__main__':
+    iterate()
